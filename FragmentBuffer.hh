@@ -34,6 +34,17 @@ public:
         return true;
     }
 
+    std::vector<DataFragment> get_fragments(unsigned int event_id) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_fragments.find(event_id);
+        if (it != m_fragments.end()) {
+            std::vector<DataFragment> fragments = std::move(it->second);
+            m_fragments.erase(it);
+            return fragments;
+        }
+        return {};
+    }
+
 private:
     std::map<unsigned int, std::vector<DataFragment>> m_fragments;
     std::mutex m_mutex;

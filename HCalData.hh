@@ -2,8 +2,16 @@
 #pragma once
 #include <string>
 #include <vector>
+
+// Represents energy deposition in a single HCAL bar
+struct HCalBarHit {
+    double energy;
+    int32_t bar_id; // Use fixed-width types
+};
+
 // Payload for the HCAL system
 struct HCalData {
     long long timestamp;
-    int bars;
+    std::vector<int> bars;
+     std::vector<HCalBarHit> barhits;
 };

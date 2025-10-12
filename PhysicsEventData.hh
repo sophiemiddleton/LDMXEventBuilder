@@ -1,6 +1,8 @@
 #pragma once
 #include "TrkData.hh"
 #include "HCalData.hh"
+#include "Fragment.hh"
+
 // combined payload
 struct PhysicsEventData {
     long long timestamp;
