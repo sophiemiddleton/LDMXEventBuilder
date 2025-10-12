@@ -17,6 +17,16 @@ public:
         boost::asio::connect(m_socket, resolver.resolve(host, port));
     }
 
+    // ... serialization function for DataFragment ...
+// (You need to create a serialization function that includes the FragmentHeader)
+std::vector<char> serialize_data_fragment(const DataFragment& fragment) {
+    // This is a simplified example. In a real system, you'd serialize the entire
+    // DataFragment struct, including the header and payload.
+    std::vector<char> buffer;
+    // ... logic to write header and payload to buffer ...
+    return buffer;
+}
+
     void send_fragment(const DataFragment& fragment) {
         // Step 1: Create a frame with a length-prefix
         // A simple frame might be [uint32_t length] [fragment data]
@@ -35,13 +45,5 @@ private:
     tcp::socket m_socket;
 };
 
-// ... serialization function for DataFragment ...
-// (You need to create a serialization function that includes the FragmentHeader)
-std::vector<char> serialize_data_fragment(const DataFragment& fragment) {
-    // This is a simplified example. In a real system, you'd serialize the entire
-    // DataFragment struct, including the header and payload.
-    std::vector<char> buffer;
-    // ... logic to write header and payload to buffer ...
-    return buffer;
-}
+
 #endif
