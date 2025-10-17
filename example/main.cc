@@ -9,6 +9,9 @@
 #include "FragmentBuffer.hh"
 #include "Fragment.hh"
 #include "BinaryDeserializer.hh"
+#include "HCalFrame.hh"
+
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -34,18 +37,67 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
     }
 
     // Use the timestamp and event ID from the first fragment as the reference
+    // A robust system would check for consistency across fragments
     event_data.event_id = fragments.front().header.event_id;
     event_data.timestamp = fragments.front().header.timestamp;
+
+    // Flags to track if we have already initialized data for a subsystem
+    bool has_tracker = false;
+    bool has_hcal = false;
+    bool has_ecal = false;
 
     // Process fragments for each subsystem
     for (const auto& fragment : fragments) {
         event_data.systems_readout.push_back(fragment.header.subsystem_id);
+
         if (fragment.header.subsystem_id == SubsystemId::Tracker) {
-            event_data.tracker_info = deserialize_tracker_data(fragment.payload);
+            // Deserialize and merge tracker data
+            TrkData current_trk_data = deserialize_tracker_data(fragment.payload);
+            if (!has_tracker) {
+                event_data.tracker_info = current_trk_data;
+                has_tracker = true;
+            } else {
+                // Merge subsequent tracker fragments
+                event_data.tracker_info.hits.insert(
+                    event_data.tracker_info.hits.end(),
+                    std::make_move_iterator(current_trk_data.hits.begin()),
+                    std::make_move_iterator(current_trk_data.hits.end())
+                );
+            }
         } else if (fragment.header.subsystem_id == SubsystemId::Hcal) {
-            event_data.hcal_info = deserialize_hcal_data(fragment.payload);
+            // Deserialize and merge HCal data
+            HCalData current_hcal_data = deserialize_hcal_data(fragment.payload);
+            if (!has_hcal) {
+                event_data.hcal_info = current_hcal_data;
+                has_hcal = true;
+            } else {
+                // Merge subsequent HCal fragments
+                event_data.hcal_info.barhits.insert(
+                    event_data.hcal_info.barhits.end(),
+                    std::make_move_iterator(current_hcal_data.barhits.begin()),
+                    std::make_move_iterator(current_hcal_data.barhits.end())
+                );
+                // Also merge raw frame data if needed
+                event_data.hcal_info.raw_frame.insert(
+                    event_data.hcal_info.raw_frame.end(),
+                    std::make_move_iterator(current_hcal_data.raw_frame.begin()),
+                    std::make_move_iterator(current_hcal_data.raw_frame.end())
+                );
+            }
         } else if (fragment.header.subsystem_id == SubsystemId::Ecal) {
-            event_data.ecal_info = deserialize_ecal_data(fragment.payload);
+            // Deserialize and merge ECal data
+            ECalData current_ecal_data = deserialize_ecal_data(fragment.payload);
+            if (!has_ecal) {
+                event_data.ecal_info = current_ecal_data;
+                has_ecal = true;
+            } else {
+                // Merge subsequent ECal fragments
+                event_data.ecal_info.sensorhits.insert(
+                    event_data.ecal_info.sensorhits.end(),
+                    std::make_move_iterator(current_ecal_data.sensorhits.begin()),
+                    std::make_move_iterator(current_ecal_data.sensorhits.end())
+                );
+            }
         }
     }
     return event_data;
@@ -269,11 +321,12 @@ int main() {
         std::uniform_real_distribution<double> pos_dist(0.0, 100.0); // Random position values
         std::uniform_int_distribution<int> id_dist(100, 999); // Random IDs
 
+        std::uniform_int_distribution<int> hcal_fragment_count_dist(1,20); // 1 to 3 HCal fragments
         for (unsigned int i = 1; i <= 5; ++i) {
             long long base_timestamp = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
 
             long long trk_timestamp = base_timestamp + distrib(gen);
-            long long hcal_timestamp = base_timestamp + distrib(gen);
+
             long long ecal_timestamp = base_timestamp + distrib(gen);
 
             // Create some dummy data
@@ -285,13 +338,29 @@ int main() {
                 trk_data.hits.push_back({pos_dist(gen), pos_dist(gen), pos_dist(gen), id_dist(gen)});
             }
 
-            HCalData hcal_data;
-            hcal_data.timestamp = hcal_timestamp;
-            int num_hcal_hits = hit_count_dist(gen);
-            hcal_data.barhits.reserve(num_hcal_hits);
-            for (int h = 0; h < num_hcal_hits; ++h) {
-                hcal_data.barhits.push_back({pos_dist(gen), id_dist(gen)});
+
+            // Simulate multiple HCal fragments with slightly different timestamps
+            int num_hcal_fragments = hcal_fragment_count_dist(gen);
+            std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments" << std::endl;
+
+            for (int h = 0; h < num_hcal_fragments; ++h) {
+                HCalData hcal_data;
+                long long hcal_timestamp = base_timestamp + distrib(gen);
+                hcal_data.timestamp = hcal_timestamp ; // Add some timestamp jitter
+
+                int num_hcal_hits = hit_count_dist(gen);
+                hcal_data.barhits.reserve(num_hcal_hits);
+                HCalFrame hcal_edcon;
+                hcal_data.raw_frame = hcal_edcon.frame_data;
+                for (int hit = 0; hit < num_hcal_hits; ++hit) {
+                    hcal_data.barhits.push_back({pos_dist(gen), id_dist(gen)});
+                }
+
+                // Simulate sending the fragment
+                simulate_tcp_client(SubsystemId::Hcal, i, hcal_data.timestamp, serialize_hcal_data(hcal_data), port);
+                std::this_thread::sleep_for(std::chrono::milliseconds(20)); // Simulate async arrival
             }
+
 
             ECalData ecal_data;
             ecal_data.timestamp = ecal_timestamp;
@@ -303,8 +372,6 @@ int main() {
 
             std::cout << "Simulating Event ID " << i << " with base timestamp " << base_timestamp << std::endl;
             simulate_tcp_client(SubsystemId::Tracker, i, trk_timestamp, serialize_tracker_data(trk_data), port);
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            simulate_tcp_client(SubsystemId::Hcal, i, hcal_timestamp, serialize_hcal_data(hcal_data), port);
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             simulate_tcp_client(SubsystemId::Ecal, i, ecal_timestamp, serialize_ecal_data(ecal_data), port);
 
