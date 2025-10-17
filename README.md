@@ -2,6 +2,16 @@
 
 # Purpose
 
+A simple starting point for the LDMX Event builder
+
+# Compile
+
+Currently I havent set this up to work with CMake. But you can compile like:
+
+```
+g++ main.cc -o event_builder -std=c++17
+./event_builder
+```
 # Concept
 
 Summary: The journey of a real-world event:
