@@ -14,7 +14,7 @@ struct HCalBarHit {
 // Payload for the HCAL system
 struct HCalData {
     long long timestamp;
-    std::vector<int> bars;
-     std::vector<HCalBarHit> barhits;
+    std::vector<HCalBarHit> barhits;
+    std::vector<uint32_t> raw_frame;
 };
 #endif

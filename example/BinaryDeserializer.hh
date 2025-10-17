@@ -6,7 +6,7 @@
 
 #include "TrkData.hh"
 #include "HCalData.hh"
-
+#include "ECalData.hh"
 
 class BinaryDeserializer {
 public:
@@ -21,13 +21,6 @@ public:
         }
         memcpy(&value, m_buffer.data() + m_pos, sizeof(T));
         m_pos += sizeof(T);
-
-        // Handle endianness if needed (e.g., convert from big-endian to native)
-        // For simplicity, we assume native byte order in this example.
-        // In a real application, you would add a conversion like:
-        // if constexpr (std::is_integral_v<T>) {
-        //    value = big_endian_to_native(value);
-        // }
     }
 
     // Overload for deserializing a vector of structs
@@ -69,8 +62,34 @@ HCalData deserialize_hcal_data(const std::vector<char>& payload) {
     deserializer.read(timestamp);
     data.timestamp = timestamp;
 
+    // Deserialize the raw frame from the payload
+    uint32_t num_frame_words;
+    deserializer.read(num_frame_words);
+    std::vector<uint32_t> frame_words(num_frame_words);
+    deserializer.read(frame_words, num_frame_words);
+    data.raw_frame = std::move(frame_words);
+
+    // TODO: In the real system, the frame_words would be parsed
+    // to extract the real physics information (HCalBarHit)
+    // For this example, we'll just add some placeholder hits.
+    if (num_frame_words > 0) {
+      data.barhits.push_back({10.5, 101});
+      data.barhits.push_back({22.3, 102});
+    }
+
+    return data;
+}
+
+// Specific deserializer for ECalData
+ECalData deserialize_ecal_data(const std::vector<char>& payload) {
+    BinaryDeserializer deserializer(payload);
+    ECalData data;
+    long long timestamp;
+    deserializer.read(timestamp);
+    data.timestamp = timestamp;
+
     uint32_t num_cells;
     deserializer.read(num_cells);
-    deserializer.read(data.barhits, num_cells);
+    deserializer.read(data.sensorhits, num_cells);
     return data;
 }

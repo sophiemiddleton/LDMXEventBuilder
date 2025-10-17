@@ -16,8 +16,6 @@ public:
     }
 
     std::unique_ptr<GenericEvent<Payload, ContributorType>> build() {
-        // Explicitly specify both template arguments to the GenericEvent constructor.
-        // This is where the compiler was likely losing the Payload type.
         return std::make_unique<GenericEvent<Payload, ContributorType>>(
             m_contributor, std::move(m_payload)
         );

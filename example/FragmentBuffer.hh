@@ -28,7 +28,7 @@ public:
         }
 
         // how many fragments to expect per event.
-        if (it->second.size() < 2) { // Example: expect one from Tracker and one from Hcal
+        if (it->second.size() < 3) { // FIXME expect one from Tracker and one from Hcal - to add more increment
             return false;
         }
 
