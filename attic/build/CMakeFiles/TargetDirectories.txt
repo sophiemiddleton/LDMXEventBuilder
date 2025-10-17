@@ -1,3 +1,0 @@
-/exp/mu2e/app/users/sophie/test_1/LDMXEventBuilder/cmake_example/build/CMakeFiles/simpleEB.dir
-/exp/mu2e/app/users/sophie/test_1/LDMXEventBuilder/cmake_example/build/CMakeFiles/edit_cache.dir
-/exp/mu2e/app/users/sophie/test_1/LDMXEventBuilder/cmake_example/build/CMakeFiles/rebuild_cache.dir
