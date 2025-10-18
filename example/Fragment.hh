@@ -43,7 +43,6 @@ struct FragmentHeader {
     ContributorId contributor_id;
     SubsystemId subsystem_id;
     size_t data_size;
-    double timestamp_ns; // New member to store the precise timestamp
     // ... other metadata (e.g., source ID, fragment number)
 };
 

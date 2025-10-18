@@ -14,4 +14,5 @@ struct TrkData {
     long long timestamp;
     std::vector<int> modules;
     std::vector<TrkHit> hits;
+    std::vector<uint32_t> raw_frame;
 };
