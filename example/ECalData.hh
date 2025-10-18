@@ -16,5 +16,6 @@ struct ECalData {
     long long timestamp;
     std::vector<int> sensors;
      std::vector<ECalSensorHit> sensorhits;
+     std::vector<uint32_t> raw_frame;
 };
 #endif

@@ -103,7 +103,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
     return event_data;
 }
 
-// Serialization helpers for simulation (unchanged)
+// Serialization helpers for simulation
 std::vector<char> serialize_tracker_data(const TrkData& data) {
     std::vector<char> buffer;
     auto write = [&](const auto& val) {
@@ -149,7 +149,7 @@ std::vector<char> serialize_ecal_data(const ECalData& data) {
     return buffer;
 }
 
-// TCP client for simulation (unchanged)
+// TCP client for simulation
 void simulate_tcp_client(SubsystemId id, unsigned int event_id, long long timestamp, std::vector<char> serialized_payload, int port) {
     int sock = 0;
     struct sockaddr_in serv_addr;
@@ -254,159 +254,26 @@ void tcp_server_listener(FragmentBuffer& buffer, int port) {
 }
 
 int main() {
-    //long long start_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
     FragmentBuffer buffer;
     const int port = 8080;
     std::cout << "Starting server listener..." << std::endl;
     std::thread server_thread(tcp_server_listener, std::ref(buffer), port);
 
-    // Event simulation loop
-    std::thread simulation_thread([&]() {
-        std::cout<<" - Simulating Data from Detector -"<<std::endl;
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<> distrib(1, 100);
-
-        // Distributions for random hit counts and values
-        std::uniform_int_distribution<int> hit_count_dist(1, 5); // 1 to 5 hits per vector
-        std::uniform_real_distribution<double> pos_dist(0.0, 100.0); // Random position values
-        std::uniform_int_distribution<int> id_dist(100, 999); // Random IDs
-
-        std::uniform_int_distribution<int> hcal_fragment_count_dist(1,20); // randomly assign number of HCal fragements
-        std::uniform_int_distribution<int> ecal_fragment_count_dist(1,20); // randomly assign number of ECal fragements
-        std::uniform_int_distribution<int> trk_fragment_count_dist(1,20); // randomly assign number of Trk fragements
-
-        long long previous_event_start_time = 0;
-        // simulates 5 "events"
-        for (unsigned int i = 1; i <= 5; ++i) {
-            long long base_timestamp = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
-
-            std::cout<<"difference from last event"<<base_timestamp - previous_event_start_time<<std::endl;
-            previous_event_start_time = base_timestamp;
-            long long trk_timestamp = base_timestamp + distrib(gen);
-            long long ecal_timestamp = base_timestamp + distrib(gen);
-            std::cout << "============ Simulating Event ID " << i << " with base timestamp " << base_timestamp << std::endl;
-
-            // Create some dummy data
-            TrkData trk_data;
-            trk_data.timestamp = trk_timestamp;
-            int num_trk_fragments = trk_fragment_count_dist(gen);
-            std::cout << "  - Simulating " << num_trk_fragments << " Trk fragments" << std::endl;
-
-            for (int h = 0; h < num_trk_fragments; ++h) {
-                TrkData trk_data;
-                long long trk_timestamp = base_timestamp + distrib(gen);
-                trk_data.timestamp = trk_timestamp ; // TODO Add some timestamp jitter
-
-                int num_trk_hits = hit_count_dist(gen);
-                trk_data.hits.reserve(num_trk_hits);
-                TrkFrame trk_edcon;
-                trk_data.raw_frame = trk_edcon.frame_data;
-                for (int h = 0; h < num_trk_hits; ++h) {
-                    trk_data.hits.push_back({pos_dist(gen), pos_dist(gen), pos_dist(gen), id_dist(gen)});
-                }
-
-                // Simulate sending the fragment
-                simulate_tcp_client(SubsystemId::Tracker, i, trk_timestamp, serialize_tracker_data(trk_data), port);
-                std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Simulate async arrival
-            }
-
-
-            // Simulate multiple HCal fragments with slightly different timestamps
-            int num_hcal_fragments = hcal_fragment_count_dist(gen);
-            std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments" << std::endl;
-
-            for (int h = 0; h < num_hcal_fragments; ++h) {
-                HCalData hcal_data;
-                long long hcal_timestamp = base_timestamp + distrib(gen);
-                hcal_data.timestamp = hcal_timestamp ; // Add some timestamp jitter
-
-                int num_hcal_hits = hit_count_dist(gen);
-                hcal_data.barhits.reserve(num_hcal_hits);
-                HCalFrame hcal_edcon;
-                hcal_data.raw_frame = hcal_edcon.frame_data;
-                for (int hit = 0; hit < num_hcal_hits; ++hit) {
-                    hcal_data.barhits.push_back({pos_dist(gen), id_dist(gen)});
-                }
-
-                // Simulate sending the fragment
-                simulate_tcp_client(SubsystemId::Hcal, i, hcal_data.timestamp, serialize_hcal_data(hcal_data), port);
-                std::this_thread::sleep_for(std::chrono::milliseconds(20)); // Simulate async arrival
-            }
-
-
-            ECalData ecal_data;
-            ecal_data.timestamp = ecal_timestamp;
-            int num_ecal_hits = hit_count_dist(gen);
-            ecal_data.sensorhits.reserve(num_ecal_hits);
-            for (int h = 0; h < num_ecal_hits; ++h) {
-                ecal_data.sensorhits.push_back({pos_dist(gen), id_dist(gen)});
-            }
-
-            simulate_tcp_client(SubsystemId::Ecal, i, ecal_timestamp, serialize_ecal_data(ecal_data), port);
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        }
-        server_running = false;
-        std::cout << "Simulation finished." << std::endl;
-    });
-
-
-    // Main event building loop
     std::thread builder_thread([&]() {
-        const long long coherence_window_ns = 1400000000;
-        const long long latency_delay_ns = 100;
+        const long long coherence_window_ns = 500000;
+        const long long latency_delay_ns = 200000000;
         const int min_subsystems_for_event = 3;
-        std::cout<<" - Building Events "<<std::endl;
+
         while(server_running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             std::vector<DataFragment> fragments;
 
             long long reference_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count() - latency_delay_ns;
-            // Check for events using the delayed reference time
-            // First, check for expired events
-            if (buffer.has_expired_fragments(reference_time, coherence_window_ns)) {
-                // The oldest events are likely incomplete, assemble them now
-                if (buffer.try_build_event(reference_time, coherence_window_ns, 0, fragments)) { // Pass 0 to indicate build regardless of count
-                    PhysicsEventData full_event = assemble_payload(fragments);
-                    std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) ---" << std::endl;
-                    std::cout << "Event ID: " << full_event.event_id << std::endl;
-                    std::cout << "Timestamp: " << full_event.timestamp << std::endl;
-                    std::cout << "Subsystems included: ";
-                    for (const auto& id : full_event.systems_readout) {
-                        std::cout << subsystem_id_to_string(id) << " ";
-                    }
-                    std::cout << std::endl;
 
-                    // Estimate size of the assembled event
-                    size_t total_size = sizeof(PhysicsEventData);
-                    total_size += full_event.tracker_info.hits.size() * sizeof(TrkHit);
-                    total_size += full_event.tracker_info.raw_frame.size() * sizeof(uint32_t);
-                    total_size += full_event.hcal_info.barhits.size() * sizeof(HCalBarHit);
-                    total_size += full_event.hcal_info.raw_frame.size() * sizeof(uint32_t);
-                    total_size += full_event.ecal_info.sensorhits.size() * sizeof(ECalSensorHit);
-                    total_size += full_event.systems_readout.size() * sizeof(SubsystemId);
-
-                    std::cout << "Estimated event size: " << total_size << " bytes" << std::endl;
-
-                    // Print contents of each subsystem
-                    if (!full_event.tracker_info.hits.empty()) {
-                        std::cout << "  - Tracker data: " << full_event.tracker_info.hits.size() << " hits" << std::endl;
-                        std::cout << "    (Raw frame size: " << full_event.tracker_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
-                    }
-                    if (!full_event.hcal_info.barhits.empty()) {
-                        std::cout << "  - HCal data: " << full_event.hcal_info.barhits.size() << " bar hits" << std::endl;
-                        std::cout << "    (Raw frame size: " << full_event.hcal_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
-                    }
-                    if (!full_event.ecal_info.sensorhits.empty()) {
-                        std::cout << "  - ECal data: " << full_event.ecal_info.sensorhits.size() << " sensor hits" << std::endl;
-                    }
-                    std::cout << "-----------------------" << std::endl;
-                }
-            } else if (buffer.try_build_event(reference_time, coherence_window_ns, 0, fragments)) { // Pass 0 to indicate build regardless of count
+            if (buffer.try_build_event(reference_time, coherence_window_ns, min_subsystems_for_event, fragments)) {
                 PhysicsEventData full_event = assemble_payload(fragments);
-                std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) ---" << std::endl;
-                // --- ADDED PRINT STATEMENTS ---
-                std::cout << "--- Assembled Event ---" << std::endl;
+
+                std::cout << "--- Assembled COMPLETE Event ---" << std::endl;
                 std::cout << "Event ID: " << full_event.event_id << std::endl;
                 std::cout << "Timestamp: " << full_event.timestamp << std::endl;
                 std::cout << "Subsystems included: ";
@@ -415,7 +282,6 @@ int main() {
                 }
                 std::cout << std::endl;
 
-                // Estimate size of the assembled event
                 size_t total_size = sizeof(PhysicsEventData);
                 total_size += full_event.tracker_info.hits.size() * sizeof(TrkHit);
                 total_size += full_event.hcal_info.barhits.size() * sizeof(HCalBarHit);
@@ -425,7 +291,6 @@ int main() {
 
                 std::cout << "Estimated event size: " << total_size << " bytes" << std::endl;
 
-                // Print contents of each subsystem
                 if (!full_event.tracker_info.hits.empty()) {
                     std::cout << "  - Tracker data: " << full_event.tracker_info.hits.size() << " hits" << std::endl;
                 }
@@ -436,12 +301,147 @@ int main() {
                 if (!full_event.ecal_info.sensorhits.empty()) {
                     std::cout << "  - ECal data: " << full_event.ecal_info.sensorhits.size() << " sensor hits" << std::endl;
                 }
-                std::cout << "-----------------------" << std::endl;
+                std::cout << "---end initial attempt to build-------" << std::endl;
+            } else if (buffer.has_expired_fragments(reference_time, coherence_window_ns)) {
+                 if (buffer.try_build_event(reference_time, coherence_window_ns, 0, fragments)) { // Pass 0 to indicate build regardless of count
+                    PhysicsEventData full_event = assemble_payload(fragments);
+                    std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) ---" << std::endl;
+                    std::cout << "Event ID: " << full_event.event_id << std::endl;
+                    std::cout << "Timestamp: " << full_event.timestamp << std::endl;
+                    std::cout << "Subsystems included: ";
+                    for (const auto& id : full_event.systems_readout) {
+                        std::cout << subsystem_id_to_string(id) << " ";
+                    }
+                    std::cout << std::endl;
+                    size_t total_size = sizeof(PhysicsEventData);
+                    total_size += full_event.tracker_info.hits.size() * sizeof(TrkHit);
+                    total_size += full_event.hcal_info.barhits.size() * sizeof(HCalBarHit);
+                    total_size += full_event.hcal_info.raw_frame.size() * sizeof(uint32_t);
+                    total_size += full_event.ecal_info.sensorhits.size() * sizeof(ECalSensorHit);
+                    total_size += full_event.systems_readout.size() * sizeof(SubsystemId);
+                    std::cout << "Estimated event size: " << total_size << " bytes" << std::endl;
+                    if (!full_event.tracker_info.hits.empty()) {
+                        std::cout << "  - Tracker data: " << full_event.tracker_info.hits.size() << " hits" << std::endl;
+                    }
+                    if (!full_event.hcal_info.barhits.empty()) {
+                        std::cout << "  - HCal data: " << full_event.hcal_info.barhits.size() << " bar hits" << std::endl;
+                        std::cout << "    (Raw frame size: " << full_event.hcal_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
+                    }
+                    if (!full_event.ecal_info.sensorhits.empty()) {
+                        std::cout << "  - ECal data: " << full_event.ecal_info.sensorhits.size() << " sensor hits" << std::endl;
+                    }
+                    std::cout << "------end search for missing fragements----------" << std::endl;
+                }
             }
-          }
-        });
+        }
+    });
+
+    std::thread simulation_thread([&]() {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<long long> time_dist(1, 100);
+
+        std::uniform_int_distribution<int> hit_count_dist(1, 5);
+        std::uniform_real_distribution<double> pos_dist(0.0, 100.0);
+        std::uniform_int_distribution<int> id_dist(100, 999);
 
 
+        std::uniform_int_distribution<int> hcal_fragment_count_dist(1, 3);
+        std::uniform_int_distribution<int> ecal_fragment_count_dist(1, 3);
+        std::uniform_int_distribution<int> trk_fragment_count_dist(1, 3);
+        std::exponential_distribution<double> inter_event_time_dist(1.0 / 500.0);
+
+        long long simulation_clock = 0;
+        long long last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+
+        for (unsigned int i = 1; i <= 5; ++i) {
+            double time_to_next_event_ms = inter_event_time_dist(gen);
+            long long time_to_next_event_ns = static_cast<long long>(time_to_next_event_ms * 1000000);
+            simulation_clock += time_to_next_event_ns;
+
+            long long base_timestamp = simulation_clock;
+
+            long long trk_timestamp_base = base_timestamp + time_dist(gen);
+            long long hcal_timestamp_base = base_timestamp + time_dist(gen);
+            long long ecal_timestamp_base = base_timestamp + time_dist(gen);
+
+            int num_trk_fragments = trk_fragment_count_dist(gen);
+            std::cout << "  - Simulating " << num_trk_fragments << " Trk fragments for Event ID " << i << std::endl;
+            for (int h = 0; h < num_trk_fragments; ++h) {
+                TrkData trk_data;
+                long long trk_frag_timestamp = trk_timestamp_base + time_dist(gen);
+                trk_data.timestamp = trk_frag_timestamp;
+
+                int num_trk_hits = hit_count_dist(gen);
+                trk_data.hits.reserve(num_trk_hits);
+                for (int hit = 0; hit < num_trk_hits; ++hit) {
+                    trk_data.hits.push_back({pos_dist(gen), pos_dist(gen), pos_dist(gen), id_dist(gen)});
+                }
+
+                trk_data.raw_frame.resize(num_trk_hits + 5);
+                for(size_t word_idx = 0; word_idx < trk_data.raw_frame.size(); ++word_idx) {
+                    trk_data.raw_frame[word_idx] = id_dist(gen);
+                }
+
+                simulate_tcp_client(SubsystemId::Tracker, i, trk_frag_timestamp, serialize_tracker_data(trk_data), port);
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+
+            int num_ecal_fragments = ecal_fragment_count_dist(gen);
+            std::cout << "  - Simulating " << num_ecal_fragments << " ECal fragments for Event ID " << i << std::endl;
+            for (int h = 0; h < num_ecal_fragments; ++h) {
+                ECalData ecal_data;
+                long long ecal_frag_timestamp = ecal_timestamp_base + time_dist(gen);
+                ecal_data.timestamp = ecal_frag_timestamp;
+
+                int num_ecal_hits = hit_count_dist(gen);
+                ecal_data.sensorhits.reserve(num_ecal_hits);
+                for (int hit = 0; hit < num_ecal_hits; ++hit) {
+                    ecal_data.sensorhits.push_back({pos_dist(gen), id_dist(gen)});
+                }
+
+                ecal_data.raw_frame.resize(num_ecal_hits + 5);
+                for(size_t word_idx = 0; word_idx < ecal_data.raw_frame.size(); ++word_idx) {
+                    ecal_data.raw_frame[word_idx] = id_dist(gen);
+                }
+
+                simulate_tcp_client(SubsystemId::Ecal, i, ecal_frag_timestamp, serialize_ecal_data(ecal_data), port);
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+
+            int num_hcal_fragments = hcal_fragment_count_dist(gen);
+            std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments for Event ID " << i << std::endl;
+            for (int h = 0; h < num_hcal_fragments; ++h) {
+                HCalData hcal_data;
+                long long hcal_frag_timestamp = hcal_timestamp_base + time_dist(gen);
+                hcal_data.timestamp = hcal_frag_timestamp;
+
+                int num_hcal_hits = hit_count_dist(gen);
+                hcal_data.barhits.reserve(num_hcal_hits);
+                for (int hit = 0; hit < num_hcal_hits; ++hit) {
+                    hcal_data.barhits.push_back({pos_dist(gen), id_dist(gen)});
+                }
+
+                hcal_data.raw_frame.resize(num_hcal_hits + 5);
+                for(size_t word_idx = 0; word_idx < hcal_data.raw_frame.size(); ++word_idx) {
+                    hcal_data.raw_frame[word_idx] = id_dist(gen);
+                }
+
+                simulate_tcp_client(SubsystemId::Hcal, i, hcal_frag_timestamp, serialize_hcal_data(hcal_data), port);
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+
+            long long now_wall_clock = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+            long long elapsed_time = now_wall_clock - last_wall_clock_time;
+            long long sleep_duration = time_to_next_event_ns - elapsed_time;
+            if (sleep_duration > 0) {
+                std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_duration));
+            }
+            last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+        }
+        server_running = false;
+        std::cout << "Simulation finished." << std::endl;
+    });
 
     server_thread.join();
     builder_thread.join();
