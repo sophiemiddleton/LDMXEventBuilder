@@ -13,7 +13,6 @@ public:
     GenericEvent(const ContributorType& contributor, Payload&& payload)
         : m_contributor(contributor), m_payload(std::move(payload)) {}
 
-    // A static method to define the event type descriptor
     static constexpr DescriptorType descriptor() { return "GenericEvent"; }
     DescriptorType type() const override { return descriptor(); }
 

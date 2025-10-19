@@ -1,3 +1,4 @@
+// FragmentBuffer.hh (revised)
 #ifndef FRAGMENTBUFFER_H
 #define FRAGMENTBUFFER_H
 #pragma once
@@ -17,65 +18,67 @@ public:
         m_fragments[fragment.header.timestamp].push_back(std::move(fragment));
     }
 
-    bool try_build_event(Timestamp reference_time, long long coherence_window_ns, int min_fragments_expected, std::vector<DataFragment>& built_fragments) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-
-        auto it_end = m_fragments.upper_bound(reference_time + coherence_window_ns);
-        auto it_begin = m_fragments.lower_bound(reference_time - coherence_window_ns);
-
-        std::vector<Timestamp> timestamps_to_process;
-        int fragments_count = 0;
-        std::set<SubsystemId> subsystems_found;
-
-        for (auto it = it_begin; it != it_end; ++it) {
-            timestamps_to_process.push_back(it->first);
-            for (const auto& frag : it->second) {
-                subsystems_found.insert(frag.header.subsystem_id);
-                fragments_count++;
-            }
-        }
-
-        if (subsystems_found.size() >= min_fragments_expected) {
-            // Found all required fragments, assemble the complete event
-            for (Timestamp ts : timestamps_to_process) {
-                for (auto& frag : m_fragments[ts]) {
-                    built_fragments.push_back(std::move(frag));
-                }
-                m_fragments.erase(ts);
-            }
-            return true;
-        }
-
-        // Check for timeout
-        auto it_oldest = m_fragments.begin();
-        if (it_oldest != m_fragments.end() && it_oldest->first < reference_time - coherence_window_ns) {
-            // Timeout expired for the oldest fragments, assemble a partial event
-            auto it_expire_end = m_fragments.upper_bound(it_oldest->first + coherence_window_ns);
-
-            for (auto it = it_oldest; it != it_expire_end; ++it) {
-                for (auto& frag : it->second) {
-                    built_fragments.push_back(std::move(frag));
-                }
-            }
-
-            m_fragments.erase(it_oldest, it_expire_end);
-            return true;
-        }
-
-        return false;
-    }
-
-    // Additional function to help in the timeout check
     bool has_expired_fragments(Timestamp reference_time, long long coherence_window_ns) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_fragments.empty()) {
+        /*
+        This function's purpose is to perform a fast, non-blocking check to see
+        if the buffer contains any events that have been waiting for too long.
+        This helps the main event-building loop decide when to force the assembly of a partial event.
+        */
+        std::lock_guard<std::mutex> lock(m_mutex); // Prevents race conditions
+        if (m_fragments.empty()) { // if no fragements return false
             return false;
         }
-        auto it_oldest = m_fragments.begin();
-
-        return it_oldest->first < reference_time - coherence_window_ns;
+        auto it_oldest = m_fragments.begin(); // find oldest (in time)
+        return it_oldest->first < reference_time - coherence_window_ns; // if the oldest fragment arrived before this threshold, it means the event is stale and should be considered expired
     }
 
+    bool try_build_event(Timestamp reference_time, long long coherence_window_ns, std::vector<DataFragment>& built_fragments, bool force_assemble = false) {
+        /*
+        This is the primary function for assembling event fragments into a single event.
+        It has two modes of operation, controlled by the force_assemble flag: assembling complete events or forcing the assembly of incomplete, timed-out events.
+
+        */
+        std::lock_guard<std::mutex> lock(m_mutex); // Prevents race
+
+        if (m_fragments.empty()) return false; // returns if not fragments
+
+        // Use the oldest fragment as the anchor for the time window if forcing assembly
+        Timestamp window_ref_time = force_assemble ? m_fragments.begin()->first : reference_time;
+
+        auto it_begin = m_fragments.lower_bound(window_ref_time - coherence_window_ns);
+        auto it_end = m_fragments.upper_bound(window_ref_time + coherence_window_ns);
+
+        if (it_begin == it_end) return false;
+
+        std::set<SubsystemId> subsystems_found;
+        std::vector<Timestamp> timestamps_in_window;
+
+        for (auto it = it_begin; it != it_end; ++it) {
+            timestamps_in_window.push_back(it->first);
+            /*
+            iterates through all fragments within the time window and populates a std::set with their SubsystemId.
+            A std::set automatically handles duplicates, so you get a count of unique subsystems.
+            */
+            for (const auto& frag : it->second) {
+                subsystems_found.insert(frag.header.subsystem_id);
+            }
+        }
+
+        // The number of fragments from each subsystem is not constant.
+        // What we need is at least one fragment from each required subsystem.
+        if (!force_assemble && subsystems_found.size() < 3) { // Check for complete event (at least one from each)
+            return false;
+        }
+
+        // Found a complete event or forcing assembly due to timeout
+        for (Timestamp ts : timestamps_in_window) {
+            for (auto& frag : m_fragments[ts]) {
+                built_fragments.push_back(std::move(frag));
+            }
+            m_fragments.erase(ts);
+        }
+        return true;
+    }
 
 private:
     std::map<Timestamp, std::vector<DataFragment>> m_fragments;

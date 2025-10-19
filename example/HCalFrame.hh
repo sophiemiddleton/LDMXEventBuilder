@@ -9,6 +9,16 @@
  * A direct representation of the ECON-D frame for a single event.
  * Note that the internal data (channel maps, sub-packets)
  * would need to be parsed further for reconstruction.
+
+from pfliib:
+
+uint32_t word;
+bool Tc() const;
+bool Tp() const;
+int toa() const;
+int adc_tm1() const;
+int adc() const;
+int tot() const;
  */
 struct HCalFrame {
     std::vector<uint32_t> frame_data = {

@@ -1,9 +1,3 @@
-/*
-n the context of the combined event builder for tracker and HCAL data, the
-DataAggregator class serves as a logical identifier for the source of the combined data.
-It represents the higher-level system that is responsible for bringing together
-information from different contributing subsystems.
-*/
 #ifndef DATAAGGREGATOR_H
 #define DATAAGGREGATOR_H
 #pragma once

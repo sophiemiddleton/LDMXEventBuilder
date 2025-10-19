@@ -43,7 +43,6 @@ struct FragmentHeader {
     ContributorId contributor_id;
     SubsystemId subsystem_id;
     size_t data_size;
-    // ... other metadata (e.g., source ID, fragment number)
 };
 
 // Represents a single data fragment

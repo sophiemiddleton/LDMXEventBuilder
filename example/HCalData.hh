@@ -5,10 +5,21 @@
 #include <string>
 #include <vector>
 
-// Represents energy deposition in a single HCAL bar
+// Represents energy deposition in a single HCAL hit
 struct HCalBarHit {
-    double energy;
-    int32_t bar_id; // Use fixed-width types
+    double pe;
+    double minpe;
+    int32_t bar_id;
+    int32_t section_id;
+    int32_t layer_id;
+    int32_t strip_id;
+    int orientation;
+    double time_diff;
+    double toa_pos_;
+    double toa_neg_;
+    double amplitude_pos_;
+    double amplitude_neg_;
+    double x, y, z;
 };
 
 // Payload for the HCAL system

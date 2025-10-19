@@ -57,11 +57,17 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
                 event_data.tracker_info = current_trk_data;
                 has_tracker = true;
             } else {
-                // Merge subsequent tracker fragments
+                // Merge subsequent Trk fragments
                 event_data.tracker_info.hits.insert(
                     event_data.tracker_info.hits.end(),
                     std::make_move_iterator(current_trk_data.hits.begin()),
                     std::make_move_iterator(current_trk_data.hits.end())
+                );
+                // Also merge raw frame data if needed
+                event_data.tracker_info.raw_frame.insert(
+                    event_data.tracker_info.raw_frame.end(),
+                    std::make_move_iterator(current_trk_data.raw_frame.begin()),
+                    std::make_move_iterator(current_trk_data.raw_frame.end())
                 );
             }
         } else if (fragment.header.subsystem_id == SubsystemId::Hcal) {
@@ -105,18 +111,33 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
 
 // Serialization helpers for simulation
 std::vector<char> serialize_tracker_data(const TrkData& data) {
-    std::vector<char> buffer;
-    auto write = [&](const auto& val) {
-        const char* p = reinterpret_cast<const char*>(&val);
-        buffer.insert(buffer.end(), p, p + sizeof(val));
-    };
-    write(data.timestamp);
-    uint32_t num_hits = data.hits.size();
-    write(num_hits);
-    for (const auto& hit : data.hits) {
-        write(hit);
-    }
-    return buffer;
+  std::vector<char> buffer;
+  auto write = [&](const auto& val) {
+      const char* p = reinterpret_cast<const char*>(&val);
+      buffer.insert(buffer.end(), p, p + sizeof(val));
+  };
+
+  write(data.timestamp);
+
+  // Write raw frame data
+  uint32_t num_frame_words = data.raw_frame.size();
+  write(num_frame_words);
+  for (const auto& word : data.raw_frame) {
+      write(word);
+  }
+
+  // Write HCalBarHit data
+  uint32_t num_bar_hits = data.hits.size();
+  write(num_bar_hits);
+
+  for (const auto& hit : data.hits) {
+      write(hit.layer);
+      // Write fixed-size x, y, and z doubles
+      write(hit.x);
+      write(hit.y);
+      write(hit.z);
+  }
+  return buffer;
 }
 
 std::vector<char> serialize_hcal_data(const HCalData& data) {
@@ -125,28 +146,72 @@ std::vector<char> serialize_hcal_data(const HCalData& data) {
         const char* p = reinterpret_cast<const char*>(&val);
         buffer.insert(buffer.end(), p, p + sizeof(val));
     };
+
     write(data.timestamp);
+
+    // Write raw frame data
     uint32_t num_frame_words = data.raw_frame.size();
     write(num_frame_words);
     for (const auto& word : data.raw_frame) {
         write(word);
     }
+
+    // Write HCalBarHit data
+    uint32_t num_bar_hits = data.barhits.size();
+    write(num_bar_hits);
+
+    for (const auto& hit : data.barhits) {
+        write(hit.pe);
+        write(hit.minpe);
+        write(hit.bar_id);
+        write(hit.section_id);
+        write(hit.layer_id);
+        write(hit.strip_id);
+        write(hit.orientation);
+        write(hit.time_diff);
+        write(hit.toa_pos_);
+        write(hit.toa_neg_);
+        write(hit.amplitude_pos_);
+        write(hit.amplitude_neg_);
+        // Write fixed-size x, y, and z doubles
+        write(hit.x);
+        write(hit.y);
+        write(hit.z);
+    }
     return buffer;
 }
 
 std::vector<char> serialize_ecal_data(const ECalData& data) {
-    std::vector<char> buffer;
-    auto write = [&](const auto& val) {
-        const char* p = reinterpret_cast<const char*>(&val);
-        buffer.insert(buffer.end(), p, p + sizeof(val));
-    };
-    write(data.timestamp);
-    uint32_t num_sensorhits = data.sensorhits.size();
-    write(num_sensorhits);
-    for (const auto& hit : data.sensorhits) {
-        write(hit);
-    }
-    return buffer;
+  std::vector<char> buffer;
+  auto write = [&](const auto& val) {
+      const char* p = reinterpret_cast<const char*>(&val);
+      buffer.insert(buffer.end(), p, p + sizeof(val));
+  };
+
+  write(data.timestamp);
+
+  // Write raw frame data
+  uint32_t num_frame_words = data.raw_frame.size();
+  write(num_frame_words);
+  for (const auto& word : data.raw_frame) {
+      write(word);
+  }
+
+  // Write ECalSensorHit data
+  uint32_t num_bar_hits = data.sensorhits.size();
+  write(num_bar_hits);
+
+  for (const auto& hit : data.sensorhits) {
+      write(hit.sensor_id);
+      write(hit.energy);
+      write(hit.amplitude);
+      write(hit.time);
+      // Write fixed-size x, y, and z doubles
+      write(hit.x);
+      write(hit.y);
+      write(hit.z);
+  }
+  return buffer;
 }
 
 // TCP client for simulation
@@ -269,10 +334,42 @@ int main() {
             std::vector<DataFragment> fragments;
 
             long long reference_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count() - latency_delay_ns;
-
-            if (buffer.try_build_event(reference_time, coherence_window_ns, min_subsystems_for_event, fragments)) {
+            if (buffer.has_expired_fragments(reference_time, coherence_window_ns)) {
+                if (buffer.try_build_event(reference_time, coherence_window_ns, fragments, true)) { // force_assemble = true
+                    PhysicsEventData partial_event = assemble_payload(fragments);
+                    // Printout for incomplete event
+                    std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) ---" << std::endl;
+                    std::cout << "Event ID: " << partial_event.event_id << std::endl;
+                    std::cout << "Timestamp: " << partial_event.timestamp << std::endl;
+                    std::cout << "Subsystems included: ";
+                    for (const auto& id : partial_event.systems_readout) {
+                        std::cout << subsystem_id_to_string(id) << " ";
+                    }
+                    std::cout << std::endl;
+                    size_t total_size = sizeof(PhysicsEventData);
+                    total_size += partial_event.tracker_info.hits.size() * sizeof(TrkHit);
+                    total_size += partial_event.hcal_info.barhits.size() * sizeof(HCalBarHit);
+                    total_size += partial_event.hcal_info.raw_frame.size() * sizeof(uint32_t);
+                    total_size += partial_event.ecal_info.sensorhits.size() * sizeof(ECalSensorHit);
+                    total_size += partial_event.systems_readout.size() * sizeof(SubsystemId);
+                    std::cout << "Estimated event size: " << total_size << " bytes" << std::endl;
+                    if (!partial_event.tracker_info.hits.empty()) {
+                        std::cout << "  - Tracker data: " << partial_event.tracker_info.hits.size() << " hits" << std::endl;
+                        std::cout << "    (Raw frame size: " << partial_event.tracker_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
+                    }
+                    if (!partial_event.hcal_info.barhits.empty()) {
+                        std::cout << "  - HCal data: " << partial_event.hcal_info.barhits.size() << " bar hits" << std::endl;
+                        std::cout << "    (Raw frame size: " << partial_event.hcal_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
+                    }
+                    if (!partial_event.ecal_info.sensorhits.empty()) {
+                        std::cout << "  - ECal data: " << partial_event.ecal_info.sensorhits.size() << " sensor hits" << std::endl;
+                        std::cout << "    (Raw frame size: " << partial_event.ecal_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
+                    }
+                    std::cout << "------end search for missing fragements----------" << std::endl;
+                }
+            } else if (buffer.try_build_event(reference_time, coherence_window_ns, fragments, false)) { // force_assemble = false
                 PhysicsEventData full_event = assemble_payload(fragments);
-
+                // Printout for complete event
                 std::cout << "--- Assembled COMPLETE Event ---" << std::endl;
                 std::cout << "Event ID: " << full_event.event_id << std::endl;
                 std::cout << "Timestamp: " << full_event.timestamp << std::endl;
@@ -284,15 +381,18 @@ int main() {
 
                 size_t total_size = sizeof(PhysicsEventData);
                 total_size += full_event.tracker_info.hits.size() * sizeof(TrkHit);
+                total_size += full_event.tracker_info.raw_frame.size() * sizeof(uint32_t);
                 total_size += full_event.hcal_info.barhits.size() * sizeof(HCalBarHit);
                 total_size += full_event.hcal_info.raw_frame.size() * sizeof(uint32_t);
                 total_size += full_event.ecal_info.sensorhits.size() * sizeof(ECalSensorHit);
+                total_size += full_event.ecal_info.raw_frame.size() * sizeof(uint32_t);
                 total_size += full_event.systems_readout.size() * sizeof(SubsystemId);
 
                 std::cout << "Estimated event size: " << total_size << " bytes" << std::endl;
 
                 if (!full_event.tracker_info.hits.empty()) {
                     std::cout << "  - Tracker data: " << full_event.tracker_info.hits.size() << " hits" << std::endl;
+                    std::cout << "    (Raw frame size: " << full_event.tracker_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
                 }
                 if (!full_event.hcal_info.barhits.empty()) {
                     std::cout << "  - HCal data: " << full_event.hcal_info.barhits.size() << " bar hits" << std::endl;
@@ -300,43 +400,15 @@ int main() {
                 }
                 if (!full_event.ecal_info.sensorhits.empty()) {
                     std::cout << "  - ECal data: " << full_event.ecal_info.sensorhits.size() << " sensor hits" << std::endl;
+                    std::cout << "    (Raw frame size: " << full_event.ecal_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
                 }
                 std::cout << "---end initial attempt to build-------" << std::endl;
-            } else if (buffer.has_expired_fragments(reference_time, coherence_window_ns)) {
-                 if (buffer.try_build_event(reference_time, coherence_window_ns, 0, fragments)) { // Pass 0 to indicate build regardless of count
-                    PhysicsEventData full_event = assemble_payload(fragments);
-                    std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) ---" << std::endl;
-                    std::cout << "Event ID: " << full_event.event_id << std::endl;
-                    std::cout << "Timestamp: " << full_event.timestamp << std::endl;
-                    std::cout << "Subsystems included: ";
-                    for (const auto& id : full_event.systems_readout) {
-                        std::cout << subsystem_id_to_string(id) << " ";
-                    }
-                    std::cout << std::endl;
-                    size_t total_size = sizeof(PhysicsEventData);
-                    total_size += full_event.tracker_info.hits.size() * sizeof(TrkHit);
-                    total_size += full_event.hcal_info.barhits.size() * sizeof(HCalBarHit);
-                    total_size += full_event.hcal_info.raw_frame.size() * sizeof(uint32_t);
-                    total_size += full_event.ecal_info.sensorhits.size() * sizeof(ECalSensorHit);
-                    total_size += full_event.systems_readout.size() * sizeof(SubsystemId);
-                    std::cout << "Estimated event size: " << total_size << " bytes" << std::endl;
-                    if (!full_event.tracker_info.hits.empty()) {
-                        std::cout << "  - Tracker data: " << full_event.tracker_info.hits.size() << " hits" << std::endl;
-                    }
-                    if (!full_event.hcal_info.barhits.empty()) {
-                        std::cout << "  - HCal data: " << full_event.hcal_info.barhits.size() << " bar hits" << std::endl;
-                        std::cout << "    (Raw frame size: " << full_event.hcal_info.raw_frame.size() * sizeof(uint32_t) << " bytes)" << std::endl;
-                    }
-                    if (!full_event.ecal_info.sensorhits.empty()) {
-                        std::cout << "  - ECal data: " << full_event.ecal_info.sensorhits.size() << " sensor hits" << std::endl;
-                    }
-                    std::cout << "------end search for missing fragements----------" << std::endl;
-                }
             }
-        }
+          }
     });
 
     std::thread simulation_thread([&]() {
+
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<long long> time_dist(1, 100);
@@ -355,6 +427,7 @@ int main() {
         long long last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
 
         for (unsigned int i = 1; i <= 5; ++i) {
+            std::cout<<" ------- beginning simulation for Event ID--------"<<i<<std::endl;
             double time_to_next_event_ms = inter_event_time_dist(gen);
             long long time_to_next_event_ns = static_cast<long long>(time_to_next_event_ms * 1000000);
             simulation_clock += time_to_next_event_ns;
@@ -394,17 +467,25 @@ int main() {
                 long long ecal_frag_timestamp = ecal_timestamp_base + time_dist(gen);
                 ecal_data.timestamp = ecal_frag_timestamp;
 
-                int num_ecal_hits = hit_count_dist(gen);
-                ecal_data.sensorhits.reserve(num_ecal_hits);
-                for (int hit = 0; hit < num_ecal_hits; ++hit) {
-                    ecal_data.sensorhits.push_back({pos_dist(gen), id_dist(gen)});
-                }
+                int num_sensor_hits = hit_count_dist(gen);
+                ecal_data.sensorhits.reserve(num_sensor_hits);
+                for (int hit = 0; hit < num_sensor_hits; ++hit) {
+                    // Populate a new ECalSensorHit with random values
+                    ecal_data.sensorhits.push_back({
+                        id_dist(gen),  // sensor_id
+                        pos_dist(gen), // energy
+                        pos_dist(gen), // amp
+                        pos_dist(gen), // time_
+                        pos_dist(gen), // x
+                        pos_dist(gen), // y
+                        pos_dist(gen)  // z
+                    });
+                  }
 
-                ecal_data.raw_frame.resize(num_ecal_hits + 5);
-                for(size_t word_idx = 0; word_idx < ecal_data.raw_frame.size(); ++word_idx) {
-                    ecal_data.raw_frame[word_idx] = id_dist(gen);
-                }
-
+                  ecal_data.raw_frame.resize(num_sensor_hits + 5);
+                  for(size_t word_idx = 0; word_idx < ecal_data.raw_frame.size(); ++word_idx) {
+                      ecal_data.raw_frame[word_idx] = id_dist(gen);
+                  }
                 simulate_tcp_client(SubsystemId::Ecal, i, ecal_frag_timestamp, serialize_ecal_data(ecal_data), port);
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
             }
@@ -412,17 +493,34 @@ int main() {
             int num_hcal_fragments = hcal_fragment_count_dist(gen);
             std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments for Event ID " << i << std::endl;
             for (int h = 0; h < num_hcal_fragments; ++h) {
-                HCalData hcal_data;
-                long long hcal_frag_timestamp = hcal_timestamp_base + time_dist(gen);
-                hcal_data.timestamp = hcal_frag_timestamp;
+              HCalData hcal_data;
+              long long hcal_frag_timestamp = hcal_timestamp_base + time_dist(gen);
+              hcal_data.timestamp = hcal_frag_timestamp;
 
-                int num_hcal_hits = hit_count_dist(gen);
-                hcal_data.barhits.reserve(num_hcal_hits);
-                for (int hit = 0; hit < num_hcal_hits; ++hit) {
-                    hcal_data.barhits.push_back({pos_dist(gen), id_dist(gen)});
+              int num_bar_hits = hit_count_dist(gen);
+              hcal_data.barhits.reserve(num_bar_hits);
+              for (int hit = 0; hit < num_bar_hits; ++hit) {
+                  // Populate a new HCalBarHit with three random doubles for position
+                  hcal_data.barhits.push_back({
+                      pos_dist(gen), // pe
+                      pos_dist(gen), // minpe
+                      id_dist(gen),  // bar_id
+                      id_dist(gen),  // section_id
+                      id_dist(gen),  // layer_id
+                      id_dist(gen),  // strip_id
+                      id_dist(gen),  // orientation
+                      pos_dist(gen), // time_diff
+                      pos_dist(gen), // toa_pos_
+                      pos_dist(gen), // toa_neg_
+                      pos_dist(gen), // amplitude_pos_
+                      pos_dist(gen), // amplitude_neg_
+                      pos_dist(gen), // x
+                      pos_dist(gen), // y
+                      pos_dist(gen)  // z
+                  });
                 }
 
-                hcal_data.raw_frame.resize(num_hcal_hits + 5);
+                hcal_data.raw_frame.resize(num_bar_hits + 5);
                 for(size_t word_idx = 0; word_idx < hcal_data.raw_frame.size(); ++word_idx) {
                     hcal_data.raw_frame[word_idx] = id_dist(gen);
                 }
