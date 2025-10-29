@@ -7,7 +7,6 @@
 #include "TrkData.hh"
 #include "HCalData.hh"
 #include "ECalData.hh"
-#include "Decoder.hh"
 
 class BinaryDeserializer {
 public:
@@ -52,115 +51,91 @@ private:
 };
 
 // Specific deserializer for TrkData
-TrkData deserialize_tracker_data(const std::vector<char>& payload) {
-  BinaryDeserializer deserializer(payload);
-  TrkData data;
-  long long timestamp;
-  deserializer.read(timestamp);
-  data.timestamp = timestamp;
+TrkData deserialize_tracker_data(const std::vector<char>& buffer) {
+    TrkData data;
+    size_t offset = 0;
+    auto read = [&](auto& val) {
+        if (offset + sizeof(val) > buffer.size()) {
+            throw std::out_of_range("Buffer read out of bounds.");
+        }
+        memcpy(&val, buffer.data() + offset, sizeof(val));
+        offset += sizeof(val);
+    };
 
-  // Deserialize the raw frame
-  uint32_t num_frame_words;
-  deserializer.read(num_frame_words);
-  std::vector<uint32_t> frame_words(num_frame_words);
-  deserializer.read(frame_words, num_frame_words);
-  data.raw_frame = std::move(frame_words);
+    read(data.timestamp);
 
-  // Deserialize  hits
-  uint32_t num_hits;
-  deserializer.read(num_hits);
-  data.hits.reserve(num_hits);
+    uint32_t num_frames;
+    read(num_frames);
 
-  for (uint32_t i = 0; i < num_hits; ++i) {
-      TrkHit hit;
-      deserializer.read(hit.layer);
-      // Read fixed-size x, y, and z doubles
-      deserializer.read(hit.x);
-      deserializer.read(hit.y);
-      deserializer.read(hit.z);
-      data.hits.push_back(std::move(hit));
-  }
-
-  return data;
-}
-
-
-HCalData deserialize_hcal_data(const std::vector<char>& payload) {
-    BinaryDeserializer deserializer(payload);
-    HCalData data;
-    long long timestamp;
-    deserializer.read(timestamp);
-    data.timestamp = timestamp;
-
-    // Deserialize the raw frame
-    uint32_t num_frame_words;
-    deserializer.read(num_frame_words);
-    std::vector<uint32_t> frame_words(num_frame_words);
-    deserializer.read(frame_words, num_frame_words);
-    data.raw_frame = std::move(frame_words);
-
-    // Deserialize bar hits
-    uint32_t num_bar_hits;
-    deserializer.read(num_bar_hits);
-    data.barhits.reserve(num_bar_hits);
-
-    for (uint32_t i = 0; i < num_bar_hits; ++i) {
-        HCalBarHit hit;
-        deserializer.read(hit.pe);
-        deserializer.read(hit.minpe);
-        deserializer.read(hit.bar_id);
-        deserializer.read(hit.section_id);
-        deserializer.read(hit.layer_id);
-        deserializer.read(hit.strip_id);
-        deserializer.read(hit.orientation);
-        deserializer.read(hit.time_diff);
-        deserializer.read(hit.toa_pos_);
-        deserializer.read(hit.toa_neg_);
-        deserializer.read(hit.amplitude_pos_);
-        deserializer.read(hit.amplitude_neg_);
-        // Read fixed-size x, y, and z doubles
-        deserializer.read(hit.x);
-        deserializer.read(hit.y);
-        deserializer.read(hit.z);
-        data.barhits.push_back(std::move(hit));
+    for (uint32_t i = 0; i < num_frames; ++i) {
+        TrkFrame frame;
+        uint32_t num_frame_words;
+        read(num_frame_words);
+        frame.frame_data.resize(num_frame_words);
+        for (uint32_t j = 0; j < num_frame_words; ++j) {
+            read(frame.frame_data[j]);
+        }
+        data.frames.push_back(frame);
     }
-
     return data;
 }
 
 
-// Specific deserializer for ECalData
-ECalData deserialize_ecal_data(const std::vector<char>& payload) {
-    BinaryDeserializer deserializer(payload);
-    ECalData data;
-    long long timestamp;
-    deserializer.read(timestamp);
-    data.timestamp = timestamp;
+HCalData deserialize_hcal_data(const std::vector<char>& buffer) {
+    HCalData data;
+    size_t offset = 0;
+    auto read = [&](auto& val) {
+        if (offset + sizeof(val) > buffer.size()) {
+            throw std::out_of_range("Buffer read out of bounds.");
+        }
+        memcpy(&val, buffer.data() + offset, sizeof(val));
+        offset += sizeof(val);
+    };
 
-    // Deserialize the raw frame
-    uint32_t num_frame_words;
-    deserializer.read(num_frame_words);
-    std::vector<uint32_t> frame_words(num_frame_words);
-    deserializer.read(frame_words, num_frame_words);
-    data.raw_frame = std::move(frame_words);
+    read(data.timestamp);
 
-    // Deserialize bar hits
-    uint32_t num_sensor_hits;
-    deserializer.read(num_sensor_hits);
-    data.sensorhits.reserve(num_sensor_hits);
+    uint32_t num_frames;
+    read(num_frames);
 
-    for (uint32_t i = 0; i < num_sensor_hits; ++i) {
-        ECalSensorHit hit;
-        deserializer.read(hit.sensor_id);
-        deserializer.read(hit.energy);
-        deserializer.read(hit.amplitude);
-        deserializer.read(hit.time);
-        // Read fixed-size x, y, and z doubles
-        deserializer.read(hit.x);
-        deserializer.read(hit.y);
-        deserializer.read(hit.z);
-        data.sensorhits.push_back(std::move(hit));
+    for (uint32_t i = 0; i < num_frames; ++i) {
+        HCalFrame frame;
+        uint32_t num_frame_words;
+        read(num_frame_words);
+        frame.frame_data.resize(num_frame_words);
+        for (uint32_t j = 0; j < num_frame_words; ++j) {
+            read(frame.frame_data[j]);
+        }
+        data.frames.push_back(frame);
     }
+    return data;
+}
 
+
+ECalData deserialize_ecal_data(const std::vector<char>& buffer) {
+    ECalData data;
+    size_t offset = 0;
+    auto read = [&](auto& val) {
+        if (offset + sizeof(val) > buffer.size()) {
+            throw std::out_of_range("Buffer read out of bounds.");
+        }
+        memcpy(&val, buffer.data() + offset, sizeof(val));
+        offset += sizeof(val);
+    };
+
+    read(data.timestamp);
+
+    uint32_t num_frames;
+    read(num_frames);
+
+    for (uint32_t i = 0; i < num_frames; ++i) {
+        ECalFrame frame;
+        uint32_t num_frame_words;
+        read(num_frame_words);
+        frame.frame_data.resize(num_frame_words);
+        for (uint32_t j = 0; j < num_frame_words; ++j) {
+            read(frame.frame_data[j]);
+        }
+        data.frames.push_back(frame);
+    }
     return data;
 }

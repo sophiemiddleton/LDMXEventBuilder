@@ -1,6 +1,6 @@
-// TrkFrame.hh
-#ifndef TRKFRAME_H
-#define TRKFRAME_H
+// ECalFrame.hh
+#ifndef ECALFRAME_H
+#define ECALFRAME_H
 #pragma once
 #include <vector>
 #include <cstdint>
@@ -20,7 +20,7 @@ int adc_tm1() const;
 int adc() const;
 int tot() const;
  */
-struct TrkFrame {
+struct ECalFrame {
     std::vector<uint32_t> frame_data = {
     0xf32d5010, 0xde92c07c,  // two-word event packet header
     0xe0308fff, 0xffffffff,  // link sub-packet header with channel map

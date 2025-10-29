@@ -4,6 +4,7 @@
 #include <variant>
 #include "TrkData.hh"
 #include "HCalData.hh"
+#include "ECalData.hh"
 
-using Payload = std::variant<TrkData, HCalData>;
+using Payload = std::variant<TrkData, HCalData, ECalData>;
 #endif

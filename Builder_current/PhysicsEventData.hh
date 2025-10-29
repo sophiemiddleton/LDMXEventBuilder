@@ -10,7 +10,6 @@
 struct PhysicsEventData {
     long long timestamp;
     long long event_id;
-    long long run_id;
     TrkData tracker_info;
     HCalData hcal_info;
     ECalData ecal_info;

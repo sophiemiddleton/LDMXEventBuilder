@@ -27,7 +27,6 @@ enum class ContributorId {
 
 struct FragmentTrailer {
     uint32_t checksum; // For error detection
-    // TODO
 };
 
 
