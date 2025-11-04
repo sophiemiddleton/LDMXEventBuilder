@@ -1,18 +1,16 @@
+// DataAggregator.hh
 #ifndef DATAAGGREGATOR_H
 #define DATAAGGREGATOR_H
-#pragma once
-#include "Contributor.hh"
-#include <string>
 
-class DataAggregator : public Contributor {
+class DataAggregator {
 public:
-    DataAggregator(std::string contributor_id, std::string system_id)
-        : m_contributor_id(std::move(contributor_id)), m_system_id(std::move(system_id)) {}
+    DataAggregator(EventMerger& merger_ref) : m_merger(merger_ref) {}
 
-    std::string get_contributor_id() const override { return m_contributor_id; }
-    std::string get_system_id() const override { return m_system_id; }
+    void aggregate(PhysicsEventData& event) { // Pass by ref now for efficiency
+        std::cout << "[Aggregator] Forwarding Event ID " << event.event_id << " to Merger." << std::endl;
+        m_merger.merge_event(std::move(event));
+    }
 private:
-    std::string m_contributor_id;
-    std::string m_system_id;
+    EventMerger& m_merger;
 };
 #endif

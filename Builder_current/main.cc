@@ -3,8 +3,6 @@
 #include <chrono>
 #include <random>
 #include <set>
-#include "EventBuilder.hh"
-#include "DataAggregator.hh"
 #include "PhysicsEventData.hh"
 #include "FragmentBuffer.hh"
 #include "Fragment.hh"
@@ -29,7 +27,7 @@ std::string subsystem_id_to_string(uint64_t id) {
         default: return "Unknown";
     }
 }
-
+int event_id = 0;
 // Function to gather and assemble fragments into a complete event payload
 PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
     PhysicsEventData event_data;
@@ -39,7 +37,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
 
     // Use the timestamp and event ID from the first fragment as the reference
     // A robust system would check for consistency across fragments
-    //event_data.event_id = fragments.front().header.event_id; //FIXME - how is this added now?
+    event_data.event_id = event_id;//fragments.front().header.event_id; //FIXME - how is this added now?
     event_data.timestamp = fragments.front().header.timestamp;
 
     // Flags to track if we have already initialized data for a subsystem
@@ -93,6 +91,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
             }
         }
     }
+    event_id+=1;
     return event_data;
 }
 
