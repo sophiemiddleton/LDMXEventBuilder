@@ -4,6 +4,9 @@
 #include <random>
 #include <set>
 #include "PhysicsEventData.hh"
+#include "EventMerger.hh"
+#include "DataAggregator.hh"
+
 #include "FragmentBuffer.hh"
 #include "Fragment.hh"
 #include "BinaryDeserializer.hh"
@@ -18,6 +21,8 @@
 #include <stdexcept>
 #include <atomic>
 
+unsigned int event_id = 0;
+
 // Helper to convert uint64_t to string for printing
 std::string subsystem_id_to_string(uint64_t id) {
     switch (id) {
@@ -27,7 +32,7 @@ std::string subsystem_id_to_string(uint64_t id) {
         default: return "Unknown";
     }
 }
-int event_id = 0;
+
 // Function to gather and assemble fragments into a complete event payload
 PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
     PhysicsEventData event_data;
@@ -91,7 +96,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
             }
         }
     }
-    event_id+=1;
+
     return event_data;
 }
 
@@ -277,27 +282,33 @@ void tcp_server_listener(FragmentBuffer& buffer, int port) {
 
 int main() {
     FragmentBuffer buffer;
+    // EventBuilder is now retired as its logic is distributed between Buffer/Aggregator/Merger
+    EventMerger merger; // The new consolidation stage
+    DataAggregator aggregator(merger); // The middle stage connecting buffer to merger
+
     const int port = 8080;
     std::cout << "Starting server listener..." << std::endl;
     std::thread server_thread(tcp_server_listener, std::ref(buffer), port);
 
+    // This builder thread now uses the aggregator/merger pattern
     std::thread builder_thread([&]() {
         const long long coherence_window_ns = 1000000;
         const long long latency_delay_ns = 200000000;
-        const int min_subsystems_for_event = 3;
+        // const int min_subsystems_for_event = 3; // This check is now handled implicitly by the merger logic finding all parts
 
-        unsigned int EventID = 0;
         while(server_running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             std::vector<DataFragment> fragments;
 
             long long reference_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count() - latency_delay_ns;
+
+            // Priority 1: Check for expired fragments (timeouts)
             if (buffer.has_expired_fragments(reference_time, coherence_window_ns)) {
                 if (buffer.try_build_event(reference_time, coherence_window_ns, fragments, true)) { // force_assemble = true
                     PhysicsEventData partial_event = assemble_payload(fragments);
-                    // Printout for incomplete event
-                    std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) ---" << std::endl;
-                    //std::cout << "Event ID: " << partial_event.event_id << std::endl;
+                    // Pass the (potentially partial) event to the aggregator
+                    aggregator.aggregate(std::move(partial_event));
+                    std::cout << "--- Assembled INCOMPLETE Event (TIMEOUT) sent to Merger ---" << std::endl;
                     std::cout << "Event Timestamp: " << partial_event.timestamp << std::endl;
                     std::cout << "Event Subsystems included: ";
                     for (const auto& id : partial_event.systems_readout) {
@@ -321,10 +332,13 @@ int main() {
                     }
                     std::cout << "------end search for missing fragements----------" << std::endl;
                 }
-            } else if (buffer.try_build_event(reference_time, coherence_window_ns, fragments, false)) { // force_assemble = false
+            }
+            // Priority 2: Check for complete events within the normal window
+            else if (buffer.try_build_event(reference_time, coherence_window_ns, fragments, false)) { // force_assemble = false
                 PhysicsEventData full_event = assemble_payload(fragments);
-                // Printout for complete event
-                std::cout << "--- Assembled COMPLETE Event ---" << std::endl;
+                // Pass the complete event to the aggregator
+                aggregator.aggregate(std::move(full_event));
+                std::cout << "--- Assembled COMPLETE Event sent to Merger ---" << std::endl;
                 //std::cout << "Event ID: " << full_event.event_id << std::endl;
                 std::cout << "Event Timestamp: " << full_event.timestamp << std::endl;
                 std::cout << "Event Subsystems included: ";
@@ -351,108 +365,111 @@ int main() {
                     std::cout << "  - ECal data:   (Raw frame size: " << full_event.ecal_info.frames.size() * sizeof(uint32_t) << " bytes)" << std::endl;
                 }
                 std::cout << "---end initial attempt to build-------" << std::endl;
-            }
+            }//
           }
     });
 
-    std::thread simulation_thread([&]() {
-        unsigned int nEvents = 50;
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        //std::uniform_int_distribution<long long> time_dist(1, 100);
+    std::thread simulation_thread([&]() mutable {
+    unsigned int nEvents = 50;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    //std::uniform_int_distribution<long long> time_dist(1, 100);
 
-        std::uniform_int_distribution<int> fragment_count_dist(0, 20);
-        std::uniform_int_distribution<int> frame_count_dist(0, 50);
-        std::exponential_distribution<double> inter_event_time_dist(1.0 / 500.0);
+    std::uniform_int_distribution<int> fragment_count_dist(0, 20);
+    std::uniform_int_distribution<int> frame_count_dist(0, 50);
+    std::exponential_distribution<double> inter_event_time_dist(1.0 / 500.0);
 
-        long long simulation_clock = 0;
-        long long last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+    long long simulation_clock = 0;
+    long long last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
 
-        for (unsigned int i = 1; i <= nEvents; ++i) {
-            std::cout<<"==================================================="<<std::endl;
-            std::cout<<"==================================================="<<std::endl;
-            std::cout<<" ------- beginning simulation for Event ID--------"<<i<<std::endl;
-            double time_to_next_event_ms = inter_event_time_dist(gen);
-            long long time_to_next_event_ns = static_cast<long long>(time_to_next_event_ms * 1000000);
-            simulation_clock += time_to_next_event_ns;
+    for (unsigned int i = 1; i <= nEvents; ++i) {
+        event_id = i;
+        std::cout<<"==================================================="<<std::endl;
+        std::cout<<"==================================================="<<std::endl;
+        std::cout<<" ------- beginning simulation for Event ID--------"<<i<<std::endl;
+        double time_to_next_event_ms = inter_event_time_dist(gen);
+        long long time_to_next_event_ns = static_cast<long long>(time_to_next_event_ms * 1000000);
+        simulation_clock += time_to_next_event_ns;
 
-            long long base_timestamp = simulation_clock;
+        long long base_timestamp = simulation_clock;
 
-            std::cout<<" - Simulated Event Time :" << base_timestamp <<" ns " << std::endl;
+        std::cout<<" - Simulated Event Time :" << base_timestamp <<" ns " << std::endl;
 
-            long long trk_timestamp_base = base_timestamp;// + time_dist(gen);
-            long long hcal_timestamp_base = base_timestamp; //+ time_dist(gen);
-            long long ecal_timestamp_base = base_timestamp;// + time_dist(gen);
+        long long trk_timestamp_base = base_timestamp;// + time_dist(gen);
+        long long hcal_timestamp_base = base_timestamp; //+ time_dist(gen);
+        long long ecal_timestamp_base = base_timestamp;// + time_dist(gen);
 
-            TrkFrame example_trk_frame;
-            ECalFrame example_ecal_frame;
-            HCalFrame example_hcal_frame;
+        TrkFrame example_trk_frame;
+        ECalFrame example_ecal_frame;
+        HCalFrame example_hcal_frame;
 
-            int num_trk_fragments = fragment_count_dist(gen);
-            std::cout << "  - Simulating " << num_trk_fragments << " Trk fragments for Event ID " << i << std::endl;
+        int num_trk_fragments = fragment_count_dist(gen);
+        std::cout << "  - Simulating " << num_trk_fragments << " Trk fragments for Event ID " << i << std::endl;
 
-            for (int h = 0; h < num_trk_fragments; ++h) {
-                TrkData trk_data;
-                long long trk_frag_timestamp = trk_timestamp_base;// + time_dist(gen);
-                trk_data.timestamp = trk_frag_timestamp;
+        for (int h = 0; h < num_trk_fragments; ++h) {
+            TrkData trk_data;
+            long long trk_frag_timestamp = trk_timestamp_base;// + time_dist(gen);
+            trk_data.timestamp = trk_frag_timestamp;
 
-                int trk_nframes = frame_count_dist(gen);
-                for (int f = 0; f < trk_nframes; ++f) {
-                    trk_data.frames.push_back(example_trk_frame);
-                }
-
-                simulate_tcp_client(0, i, trk_frag_timestamp, serialize_tracker_data(trk_data), port);
+            int trk_nframes = frame_count_dist(gen);
+            for (int f = 0; f < trk_nframes; ++f) {
+                trk_data.frames.push_back(example_trk_frame);
             }
 
-            // Simulate Ecal fragments
-            int num_ecal_fragments = fragment_count_dist(gen);
-            std::cout << "  - Simulating " << num_ecal_fragments << " ECal fragments for Event ID " << i << std::endl;
-
-            for (int h = 0; h < num_ecal_fragments; ++h) {
-                ECalData ecal_data;
-                long long ecal_frag_timestamp = ecal_timestamp_base;// + time_dist(gen);
-                ecal_data.timestamp = ecal_frag_timestamp;
-
-                int ecal_nframes = frame_count_dist(gen);
-                for (int f = 0; f < ecal_nframes; ++f) {
-                    ecal_data.frames.push_back(example_ecal_frame);
-                }
-
-                simulate_tcp_client(2, i, ecal_frag_timestamp, serialize_ecal_data(ecal_data), port);
-            }
-
-            // Simulate Hcal fragments
-            int num_hcal_fragments = fragment_count_dist(gen);
-            std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments for Event ID " << i << std::endl;
-
-            for (int h = 0; h < num_hcal_fragments; ++h) {
-                HCalData hcal_data;
-                long long hcal_frag_timestamp = hcal_timestamp_base;// + time_dist(gen);
-                hcal_data.timestamp = hcal_frag_timestamp;
-
-                int hcal_nframes = frame_count_dist(gen);
-                for (int f = 0; f < hcal_nframes; ++f) {
-                    hcal_data.frames.push_back(example_hcal_frame);
-                }
-
-                simulate_tcp_client(1, i, hcal_frag_timestamp, serialize_hcal_data(hcal_data), port);
-            }
-
-            long long now_wall_clock = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
-            long long elapsed_time = now_wall_clock - last_wall_clock_time;
-            long long sleep_duration = time_to_next_event_ns - elapsed_time;
-            if (sleep_duration > 0) {
-                std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_duration));
-            }
-            last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+            simulate_tcp_client(0, i, trk_frag_timestamp, serialize_tracker_data(trk_data), port);
         }
-        server_running = false;
-        std::cout << "Simulation finished." << std::endl;
-    });
 
-    server_thread.join();
-    builder_thread.join();
+        // Simulate Ecal fragments
+        int num_ecal_fragments = fragment_count_dist(gen);
+        std::cout << "  - Simulating " << num_ecal_fragments << " ECal fragments for Event ID " << i << std::endl;
+
+        for (int h = 0; h < num_ecal_fragments; ++h) {
+            ECalData ecal_data;
+            long long ecal_frag_timestamp = ecal_timestamp_base;// + time_dist(gen);
+            ecal_data.timestamp = ecal_frag_timestamp;
+
+            int ecal_nframes = frame_count_dist(gen);
+            for (int f = 0; f < ecal_nframes; ++f) {
+                ecal_data.frames.push_back(example_ecal_frame);
+            }
+
+            simulate_tcp_client(2, i, ecal_frag_timestamp, serialize_ecal_data(ecal_data), port);
+        }
+
+        // Simulate Hcal fragments
+        int num_hcal_fragments = fragment_count_dist(gen);
+        std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments for Event ID " << i << std::endl;
+
+        for (int h = 0; h < num_hcal_fragments; ++h) {
+            HCalData hcal_data;
+            long long hcal_frag_timestamp = hcal_timestamp_base;// + time_dist(gen);
+            hcal_data.timestamp = hcal_frag_timestamp;
+
+            int hcal_nframes = frame_count_dist(gen);
+            for (int f = 0; f < hcal_nframes; ++f) {
+                hcal_data.frames.push_back(example_hcal_frame);
+            }
+
+            simulate_tcp_client(1, i, hcal_frag_timestamp, serialize_hcal_data(hcal_data), port);
+        }
+
+        long long now_wall_clock = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+        long long elapsed_time = now_wall_clock - last_wall_clock_time;
+        long long sleep_duration = time_to_next_event_ns - elapsed_time;
+        if (sleep_duration > 0) {
+            std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_duration));
+        }
+        last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
+        unsigned int total_contributions = num_trk_fragments + num_hcal_fragments + num_ecal_fragments;
+        std::cout << " Event " << i<< "has " <<  total_contributions << " contributions" << std::endl;
+    }
+    server_running = false;
+    std::cout << "Simulation finished." << std::endl;
+});
+
     simulation_thread.join();
+    builder_thread.join();
+    server_thread.join();
 
     return 0;
 }

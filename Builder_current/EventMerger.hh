@@ -5,7 +5,7 @@
 #include <mutex>
 #include <iostream>
 #include <algorithm>
-#include "PhysicsEventData.hh" // Assuming this header has the struct definition
+#include "PhysicsEventData.hh"
 
 class EventMerger {
 public:
@@ -56,7 +56,7 @@ public:
 
             std::cout << "[Merger] Merged new data into Event ID " << id << ". Total subsystems read: " << existing_event.systems_readout.size() << std::endl;
 
-            // Optional: Add logic here to check if the event is now fully complete (e.g., all 3 subsystems present)
+            // TODO: Add logic here to check if the event is now fully complete (e.g., all 3 subsystems present)
             // If complete, move it out of the map to a 'complete' queue for final writing to disk.
         }
     }
