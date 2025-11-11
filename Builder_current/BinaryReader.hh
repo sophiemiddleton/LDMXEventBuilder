@@ -8,9 +8,9 @@
 #include "HCalData.hh"
 #include "ECalData.hh"
 
-class BinaryDeserializer {
+class BinaryReader {
 public:
-    BinaryDeserializer(const std::vector<char>& buffer)
+    BinaryReader(const std::vector<char>& buffer)
         : m_buffer(buffer), m_pos(0) {}
 
     /*
@@ -18,7 +18,7 @@ public:
     It uses memcpy to copy the exact byte representation of the type T from the buffer into the provided value variable.
     A buffer underrun check is performed to prevent reading beyond the buffer's bounds.
     */
-    // Function to deserialize a single value
+    // Function to read a single value
     template <typename T>
     void read(T& value) {
         if (m_pos + sizeof(T) > m_buffer.size()) {
@@ -32,7 +32,7 @@ public:
     /*
     This overloaded template function handles the deserialization of a vector of complex types (T).
     It first resizes the vector to the count specified in the binary payload. Then,
-    it iterates count times, calling the read(T& value) function to deserialize each individual element into the vector.
+    it iterates count times, calling the read(T& value) function to read each individual element into the vector.
     */
     template <typename T>
     void read(std::vector<T>& vec, size_t count) {
@@ -50,8 +50,8 @@ private:
     size_t m_pos;
 };
 
-// Specific deserializer for TrkData
-TrkData deserialize_tracker_data(const std::vector<char>& buffer) {
+// Specific readr for TrkData
+TrkData read_tracker_data(const std::vector<char>& buffer) {
     TrkData data;
     size_t offset = 0;
     auto read = [&](auto& val) {
@@ -81,7 +81,7 @@ TrkData deserialize_tracker_data(const std::vector<char>& buffer) {
 }
 
 
-HCalData deserialize_hcal_data(const std::vector<char>& buffer) {
+HCalData read_hcal_data(const std::vector<char>& buffer) {
     HCalData data;
     size_t offset = 0;
     auto read = [&](auto& val) {
@@ -111,7 +111,7 @@ HCalData deserialize_hcal_data(const std::vector<char>& buffer) {
 }
 
 
-ECalData deserialize_ecal_data(const std::vector<char>& buffer) {
+ECalData read_ecal_data(const std::vector<char>& buffer) {
     ECalData data;
     size_t offset = 0;
     auto read = [&](auto& val) {

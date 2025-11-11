@@ -9,7 +9,7 @@
 
 #include "FragmentBuffer.hh"
 #include "Fragment.hh"
-#include "BinaryDeserializer.hh"
+#include "BinaryReader.hh"
 #include "HCalFrame.hh"
 #include "ECalFrame.hh"
 #include "TrkFrame.hh"
@@ -55,7 +55,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
         event_data.systems_readout.push_back(fragment.header.subsystem_id);
 
         if (fragment.header.subsystem_id == 0) {
-            TrkData current_trk_data = deserialize_tracker_data(fragment.payload);
+            TrkData current_trk_data = read_tracker_data(fragment.payload);
             if (!has_tracker) {
                 event_data.tracker_info = current_trk_data;
                 has_tracker = true;
@@ -69,7 +69,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
             }
         }
         else if (fragment.header.subsystem_id == 1) {
-            HCalData current_hcal_data = deserialize_hcal_data(fragment.payload);
+            HCalData current_hcal_data = read_hcal_data(fragment.payload);
             if (!has_hcal) {
                 event_data.hcal_info = current_hcal_data;
                 has_hcal = true;
@@ -82,7 +82,7 @@ PhysicsEventData assemble_payload(const std::vector<DataFragment>& fragments) {
                 );
             }
         } else if (fragment.header.subsystem_id == 2) {
-            ECalData current_ecal_data = deserialize_ecal_data(fragment.payload);
+            ECalData current_ecal_data = read_ecal_data(fragment.payload);
             if (!has_ecal) {
                 event_data.ecal_info = current_ecal_data;
                 has_ecal = true;
@@ -282,7 +282,6 @@ void tcp_server_listener(FragmentBuffer& buffer, int port) {
 
 int main() {
     FragmentBuffer buffer;
-    // EventBuilder is now retired as its logic is distributed between Buffer/Aggregator/Merger
     EventMerger merger; // The new consolidation stage
     DataAggregator aggregator(merger); // The middle stage connecting buffer to merger
 
@@ -290,11 +289,10 @@ int main() {
     std::cout << "Starting server listener..." << std::endl;
     std::thread server_thread(tcp_server_listener, std::ref(buffer), port);
 
-    // This builder thread now uses the aggregator/merger pattern
     std::thread builder_thread([&]() {
         const long long coherence_window_ns = 1000000;
         const long long latency_delay_ns = 200000000;
-        // const int min_subsystems_for_event = 3; // This check is now handled implicitly by the merger logic finding all parts
+        // const int min_subsystems_for_event = 3;
 
         while(server_running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
