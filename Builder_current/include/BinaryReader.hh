@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <algorithm>
 #include <iterator>
+#include <cstring>
 
 #include "TrkData.hh"
 #include "HCalData.hh"
