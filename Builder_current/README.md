@@ -6,11 +6,14 @@ A simple starting point for the LDMX Event builder
 
 # Compile
 
-Currently I havent set this up to work with CMake. But you can compile like:
+To run with cmake:
 
 ```
-g++ main.cc -o event_builder -std=c++17
-./event_builder
+mkdir build
+cd build
+cmake ..
+cd ..
+cmake --build build
 ```
 # Concept
 
