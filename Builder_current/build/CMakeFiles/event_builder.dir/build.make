@@ -53,10 +53,10 @@ RM = /Applications/CMake.app/Contents/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/sophie/LDMXEventBuilder/Builder_current
+CMAKE_SOURCE_DIR = /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/sophie/LDMXEventBuilder/Builder_current/build
+CMAKE_BINARY_DIR = /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/event_builder.dir/depend.make
@@ -70,18 +70,18 @@ include CMakeFiles/event_builder.dir/progress.make
 include CMakeFiles/event_builder.dir/flags.make
 
 CMakeFiles/event_builder.dir/src/main.cc.o: CMakeFiles/event_builder.dir/flags.make
-CMakeFiles/event_builder.dir/src/main.cc.o: /Users/sophie/LDMXEventBuilder/Builder_current/src/main.cc
+CMakeFiles/event_builder.dir/src/main.cc.o: /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/src/main.cc
 CMakeFiles/event_builder.dir/src/main.cc.o: CMakeFiles/event_builder.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/sophie/LDMXEventBuilder/Builder_current/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/event_builder.dir/src/main.cc.o"
-	/Library/Developer/CommandLineTools/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/event_builder.dir/src/main.cc.o -MF CMakeFiles/event_builder.dir/src/main.cc.o.d -o CMakeFiles/event_builder.dir/src/main.cc.o -c /Users/sophie/LDMXEventBuilder/Builder_current/src/main.cc
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/event_builder.dir/src/main.cc.o"
+	/Library/Developer/CommandLineTools/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/event_builder.dir/src/main.cc.o -MF CMakeFiles/event_builder.dir/src/main.cc.o.d -o CMakeFiles/event_builder.dir/src/main.cc.o -c /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/src/main.cc
 
 CMakeFiles/event_builder.dir/src/main.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/event_builder.dir/src/main.cc.i"
-	/Library/Developer/CommandLineTools/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/sophie/LDMXEventBuilder/Builder_current/src/main.cc > CMakeFiles/event_builder.dir/src/main.cc.i
+	/Library/Developer/CommandLineTools/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/src/main.cc > CMakeFiles/event_builder.dir/src/main.cc.i
 
 CMakeFiles/event_builder.dir/src/main.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/event_builder.dir/src/main.cc.s"
-	/Library/Developer/CommandLineTools/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/sophie/LDMXEventBuilder/Builder_current/src/main.cc -o CMakeFiles/event_builder.dir/src/main.cc.s
+	/Library/Developer/CommandLineTools/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/src/main.cc -o CMakeFiles/event_builder.dir/src/main.cc.s
 
 # Object files for target event_builder
 event_builder_OBJECTS = \
@@ -90,14 +90,14 @@ event_builder_OBJECTS = \
 # External object files for target event_builder
 event_builder_EXTERNAL_OBJECTS =
 
-/Users/sophie/LDMXEventBuilder/Builder_current/bin/event_builder: CMakeFiles/event_builder.dir/src/main.cc.o
-/Users/sophie/LDMXEventBuilder/Builder_current/bin/event_builder: CMakeFiles/event_builder.dir/build.make
-/Users/sophie/LDMXEventBuilder/Builder_current/bin/event_builder: CMakeFiles/event_builder.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/sophie/LDMXEventBuilder/Builder_current/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable /Users/sophie/LDMXEventBuilder/Builder_current/bin/event_builder"
+/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/bin/event_builder: CMakeFiles/event_builder.dir/src/main.cc.o
+/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/bin/event_builder: CMakeFiles/event_builder.dir/build.make
+/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/bin/event_builder: CMakeFiles/event_builder.dir/link.txt
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/bin/event_builder"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/event_builder.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
-CMakeFiles/event_builder.dir/build: /Users/sophie/LDMXEventBuilder/Builder_current/bin/event_builder
+CMakeFiles/event_builder.dir/build: /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/bin/event_builder
 .PHONY : CMakeFiles/event_builder.dir/build
 
 CMakeFiles/event_builder.dir/clean:
@@ -105,6 +105,6 @@ CMakeFiles/event_builder.dir/clean:
 .PHONY : CMakeFiles/event_builder.dir/clean
 
 CMakeFiles/event_builder.dir/depend:
-	cd /Users/sophie/LDMXEventBuilder/Builder_current/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/sophie/LDMXEventBuilder/Builder_current /Users/sophie/LDMXEventBuilder/Builder_current /Users/sophie/LDMXEventBuilder/Builder_current/build /Users/sophie/LDMXEventBuilder/Builder_current/build /Users/sophie/LDMXEventBuilder/Builder_current/build/CMakeFiles/event_builder.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build /Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build/CMakeFiles/event_builder.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/event_builder.dir/depend
 

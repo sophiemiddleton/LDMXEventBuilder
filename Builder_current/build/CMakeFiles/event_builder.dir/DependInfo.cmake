@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/Users/sophie/LDMXEventBuilder/Builder_current/src/main.cc" "CMakeFiles/event_builder.dir/src/main.cc.o" "gcc" "CMakeFiles/event_builder.dir/src/main.cc.o.d"
+  "/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/src/main.cc" "CMakeFiles/event_builder.dir/src/main.cc.o" "gcc" "CMakeFiles/event_builder.dir/src/main.cc.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

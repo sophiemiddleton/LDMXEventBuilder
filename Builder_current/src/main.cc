@@ -3,6 +3,11 @@
 #include <chrono>
 #include <random>
 #include <set>
+#include <fstream>
+#include <sstream>
+
+
+
 #include "PhysicsEventData.hh"
 #include "EventMerger.hh"
 #include "DataAggregator.hh"
@@ -13,6 +18,7 @@
 #include "HCalFrame.hh"
 #include "ECalFrame.hh"
 #include "TrkFrame.hh"
+#include "Decoder.hh"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -280,7 +286,134 @@ void tcp_server_listener(FragmentBuffer& buffer, int port) {
     close(server_fd);
 }
 
-int main() {
+
+void stream_from_file(const std::string& filename, int port) {
+    std::ifstream infile(filename);
+    if (!infile.is_open()) {
+        std::cerr << "Could not open file: " << filename << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(infile, line) && server_running) {
+        std::stringstream ss(line);
+        unsigned int id;
+        uint64_t sub_id;
+        long long ts;
+        int val; // Assuming some dummy data values follow
+
+        // Example CSV format: event_id, subsystem_id, timestamp, data_val
+        char comma;
+        if (!(ss >> id >> comma >> sub_id >> comma >> ts >> comma >> val)) continue;
+
+        // Package the data based on subsystem
+        std::vector<char> payload;
+        if (sub_id == 0) { // Tracker
+            TrkData data; data.timestamp = ts;
+            data.frames.push_back(TrkFrame()); // Add data based on 'val'
+            payload = serialize_tracker_data(data);
+        } else if (sub_id == 1) { // HCal
+            HCalData data; data.timestamp = ts;
+            data.frames.push_back(HCalFrame());
+            payload = serialize_hcal_data(data);
+        } else { // ECal
+            ECalData data; data.timestamp = ts;
+            data.frames.push_back(ECalFrame());
+            payload = serialize_ecal_data(data);
+        }
+
+        // Send to the Event Builder via TCP
+        simulate_tcp_client(sub_id, id, ts, payload, port);
+
+        // Optional: Control the "playback" speed
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    server_running = false;
+}
+
+#include "Router.hh"
+int main(int argc, char** argv) {
+    if (argc < 2) return 1;
+    Router router;
+    router.routePackets(argv[1]);
+    return 0;
+}
+
+/*
+void stream_line_by_line(const std::string& filename, uint64_t sub_id, int port) {
+    std::ifstream file(filename);
+    std::string line;
+
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == 't') continue; // Skip header
+
+        std::stringstream ss(line);
+        long long ts;
+        unsigned int orbit, bx, event_id, i_link;
+        std::string channel;
+        int i_sample, tp, tc, adc_tm1, adc, tot, toa;
+        char c; // comma
+
+        // Parsing based on your structure
+        if (!(ss >> ts >> c >> orbit >> c >> bx >> c >> event_id >> c >> i_link >> c >> channel >> c >> i_sample>> c >> Tp >> c >> Tc  >> c >> adc_tm1 >> c >> adc  >> c >> tot  >> c >> toa)) continue; //timestamp,orbit,bx,event,i_link,channel,i_sample,Tp,Tc,adc_tm1,adc,tot,toa
+
+
+        // Pack into a temporary container to serialize
+        HCalData temp_data;
+        temp_data.timestamp = ts;
+        HCalFrame frame;
+        frame.frame_data = {(uint32_t)adc, (uint32_t)tot, (uint32_t)toa};
+        temp_data.frames.push_back(frame);
+
+        auto payload = serialize_hcal_data(temp_data);
+        simulate_tcp_client(sub_id, event_id, ts, payload, port);
+    }
+}
+*/
+
+/*
+int main(int argc, char* argv[]) {
+    // 1. Basic Command Line Argument Check
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <input_file.dat> [output_file.csv]" << std::endl;
+        return 1;
+    }
+
+    std::string inputFileName = argv[1];
+    std::string outputFileName = (argc > 2) ? argv[2] : "decoded_output.csv";
+
+    // 2. Open the Output Stream
+    std::ofstream outputFile(outputFileName);
+    if (!outputFile.is_open()) {
+        std::cerr << "Error: Could not create output file: " << outputFileName << std::endl;
+        return 1;
+    }
+
+    // 3. Instantiate the Decoder
+    Decoder decoder;
+
+    std::cout << "--------------------------------------------------" << std::endl;
+    std::cout << "LDMX Event Decoder Initialized" << std::endl;
+    std::cout << "Input:  " << inputFileName << std::endl;
+    std::cout << "Output: " << outputFileName << std::endl;
+    std::cout << "--------------------------------------------------" << std::endl;
+
+    // 4. Run the Decoding Process
+    try {
+        decoder.decodeAndSave(inputFileName, outputFile);
+        std::cout << "\nDecoding completed successfully." << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "\nAn error occurred during decoding: " << e.what() << std::endl;
+        outputFile.close();
+        return 1;
+    }
+
+    // 5. Cleanup
+    outputFile.close();
+    return 0;
+}*/
+
+/*int main() {
     FragmentBuffer buffer;
     EventMerger merger; // The new consolidation stage
     DataAggregator aggregator(merger); // The middle stage connecting buffer to merger
@@ -367,107 +500,16 @@ int main() {
           }
     });
 
-    std::thread simulation_thread([&]() mutable {
-    unsigned int nEvents = 50;
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    //std::uniform_int_distribution<long long> time_dist(1, 100);
+    // Replace the old simulation_thread with this:
+    std::thread file_thread(stream_from_file, "events.txt", port);
 
-    std::uniform_int_distribution<int> fragment_count_dist(0, 20);
-    std::uniform_int_distribution<int> frame_count_dist(0, 50);
-    std::exponential_distribution<double> inter_event_time_dist(1.0 / 500.0);
-
-    long long simulation_clock = 0;
-    long long last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
-
-    for (unsigned int i = 1; i <= nEvents; ++i) {
-        event_id = i;
-        std::cout<<"==================================================="<<std::endl;
-        std::cout<<"==================================================="<<std::endl;
-        std::cout<<" ------- beginning simulation for Event ID--------"<<i<<std::endl;
-        double time_to_next_event_ms = inter_event_time_dist(gen);
-        long long time_to_next_event_ns = static_cast<long long>(time_to_next_event_ms * 1000000);
-        simulation_clock += time_to_next_event_ns;
-
-        long long base_timestamp = simulation_clock;
-
-        std::cout<<" - Simulated Event Time :" << base_timestamp <<" ns " << std::endl;
-
-        long long trk_timestamp_base = base_timestamp;// + time_dist(gen);
-        long long hcal_timestamp_base = base_timestamp; //+ time_dist(gen);
-        long long ecal_timestamp_base = base_timestamp;// + time_dist(gen);
-
-        TrkFrame example_trk_frame;
-        ECalFrame example_ecal_frame;
-        HCalFrame example_hcal_frame;
-
-        int num_trk_fragments = fragment_count_dist(gen);
-        std::cout << "  - Simulating " << num_trk_fragments << " Trk fragments for Event ID " << i << std::endl;
-
-        for (int h = 0; h < num_trk_fragments; ++h) {
-            TrkData trk_data;
-            long long trk_frag_timestamp = trk_timestamp_base;// + time_dist(gen);
-            trk_data.timestamp = trk_frag_timestamp;
-
-            int trk_nframes = frame_count_dist(gen);
-            for (int f = 0; f < trk_nframes; ++f) {
-                trk_data.frames.push_back(example_trk_frame);
-            }
-
-            simulate_tcp_client(0, i, trk_frag_timestamp, serialize_tracker_data(trk_data), port);
-        }
-
-        // Simulate Ecal fragments
-        int num_ecal_fragments = fragment_count_dist(gen);
-        std::cout << "  - Simulating " << num_ecal_fragments << " ECal fragments for Event ID " << i << std::endl;
-
-        for (int h = 0; h < num_ecal_fragments; ++h) {
-            ECalData ecal_data;
-            long long ecal_frag_timestamp = ecal_timestamp_base;// + time_dist(gen);
-            ecal_data.timestamp = ecal_frag_timestamp;
-
-            int ecal_nframes = frame_count_dist(gen);
-            for (int f = 0; f < ecal_nframes; ++f) {
-                ecal_data.frames.push_back(example_ecal_frame);
-            }
-
-            simulate_tcp_client(2, i, ecal_frag_timestamp, serialize_ecal_data(ecal_data), port);
-        }
-
-        // Simulate Hcal fragments
-        int num_hcal_fragments = fragment_count_dist(gen);
-        std::cout << "  - Simulating " << num_hcal_fragments << " HCal fragments for Event ID " << i << std::endl;
-
-        for (int h = 0; h < num_hcal_fragments; ++h) {
-            HCalData hcal_data;
-            long long hcal_frag_timestamp = hcal_timestamp_base;// + time_dist(gen);
-            hcal_data.timestamp = hcal_frag_timestamp;
-
-            int hcal_nframes = frame_count_dist(gen);
-            for (int f = 0; f < hcal_nframes; ++f) {
-                hcal_data.frames.push_back(example_hcal_frame);
-            }
-
-            simulate_tcp_client(1, i, hcal_frag_timestamp, serialize_hcal_data(hcal_data), port);
-        }
-
-        long long now_wall_clock = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
-        long long elapsed_time = now_wall_clock - last_wall_clock_time;
-        long long sleep_duration = time_to_next_event_ns - elapsed_time;
-        if (sleep_duration > 0) {
-            std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_duration));
-        }
-        last_wall_clock_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now()).time_since_epoch().count();
-        unsigned int total_contributions = num_trk_fragments + num_hcal_fragments + num_ecal_fragments;
-        std::cout << " Event " << i<< "has " <<  total_contributions << " contributions" << std::endl;
-    }
-    server_running = false;
-    std::cout << "Simulation finished." << std::endl;
-});
+    file_thread.join();
+    builder_thread.join();
+    server_thread.join();
 
     simulation_thread.join();
     builder_thread.join();
     server_thread.join();
 
     return 0;
-}
+}*/

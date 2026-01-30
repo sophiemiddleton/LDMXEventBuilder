@@ -1,3 +1,3 @@
-/Users/sophie/LDMXEventBuilder/Builder_current/build/CMakeFiles/event_builder.dir
-/Users/sophie/LDMXEventBuilder/Builder_current/build/CMakeFiles/edit_cache.dir
-/Users/sophie/LDMXEventBuilder/Builder_current/build/CMakeFiles/rebuild_cache.dir
+/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build/CMakeFiles/event_builder.dir
+/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build/CMakeFiles/edit_cache.dir
+/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/build/CMakeFiles/rebuild_cache.dir

@@ -28,7 +28,7 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/Applications/CMake.app/Contents/share/cmake-3.30/Modules/Platform/Darwin-Initialize.cmake"
   "/Applications/CMake.app/Contents/share/cmake-3.30/Modules/Platform/Darwin.cmake"
   "/Applications/CMake.app/Contents/share/cmake-3.30/Modules/Platform/UnixPaths.cmake"
-  "/Users/sophie/LDMXEventBuilder/Builder_current/CMakeLists.txt"
+  "/Users/sophie/LDMX/EventBuilder_Jan2026/proto/LDMXEventBuilder/Builder_current/CMakeLists.txt"
   "CMakeFiles/3.30.0-rc3/CMakeCCompiler.cmake"
   "CMakeFiles/3.30.0-rc3/CMakeCXXCompiler.cmake"
   "CMakeFiles/3.30.0-rc3/CMakeSystem.cmake"
